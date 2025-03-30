@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Dashboard de Custos do Carro</title>
+ 
+ <!-- Bootstrap CSS -->
+ <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+ 
+ <!-- Chart.js -->
+ <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+ 
+ <!-- SheetJS (xlsx) para ler arquivos Excel -->
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+ 
+ <style>
+     :root {
+         --primary-color: #3498db;
+         --secondary-color: #2980b9;
+         --accent-color: #e74c3c;
+         --light-bg: #f8f9fa;
+         --dark-text: #343a40;
+     }
+     
+     body {
+         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+         background-color: #f5f5f5;
+         color: var(--dark-text);
+     }
+     
+     .dashboard-header {
+         background-color: white;
+         padding: 20px 0;
+         box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+         margin-bottom: 30px;
+     }
+     
+     .dashboard-card {
+         margin-bottom: 25px;
+         border-radius: 12px;
+         box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+         background-color: white;
+         border: none;
+         transition: transform 0.2s ease-in-out;
+     }
+     
+     .dashboard-card:hover {
+         transform: translateY(-5px);
+     }
+     
+     .card-header {
+         border-radius: 12px 12px 0 0 !important;
+         background-color: var(--light-bg);
+         font-weight: 600;
+         color: var(--secondary-color);
+         border-bottom: 2px solid rgba(0,0,0,0.05);
+         padding: 15px 20px;
+     }
+     
+     .filter-section {
+         padding: 20px;
+         background-color: white;
+         border-radius: 12px;
+         margin-bottom: 25px;
+         box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+     }
+     
+     .summary-card {
+         text-align: center;
+         padding: 25px 15px;
+         border-left: 5px solid transparent;
+     }
+     
+     .summary-card.total {
+         border-left-color: var(--primary-color);
+     }
+     
+     .summary-card.average {
+         border-left-color: var(--secondary-color);
+     }
+     
+     .summary-card.category {
+         border-left-color: var(--accent-color);
+     }
+     
+     .summary-label {
+         font-size: 14px;
+         color: #6c757d;
+         margin-bottom: 5px;
+     }
+     
+     .summary-value {
+         font-size: 28px;
+         font-weight: 700;
+         color: var(--primary-color);
+     }
+     
+     .chart-container {
+         position: relative;
+         height: 300px;
+     }
+     
+     .table-container {
+         max-height: 400px;
+         overflow-y: auto;
+     }
+     
+     .year-selector {
+         display: flex;
+         flex-wrap: wrap;
+         gap: 8px;
+         margin-bottom: 10px;
+     }
+     
+     .year-btn {
+         background-color: #e9ecef;
+         color: var(--dark-text);
+         border: none;
+         padding: 8px 15px;
+         border-radius: 20px;
+         font-weight: 500;
+     }
+     
+     .year-btn.active {
+         background-color: var(--primary-color);
+         color: white;
+     }
+     
+     .loading-overlay {
+         position: fixed;
+         top: 0;
+         left: 0;
+         width: 100%;
+         height: 100%;
+         background-color: rgba(255, 255, 255, 0.8);
+         display: flex;
+         flex-direction: column;
+         justify-content: center;
+         align-items: center;
+         z-index: 9999;
+     }
+     
+     .spinner-border {
+         width: 3rem;
+         height: 3rem;
+     }
+     
+     .file-upload-card {
+         background-color: white;
+         border-radius: 12px;
+         box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+         padding: 30px;
+         margin-bottom: 25px;
+         text-align: center;
+     }
+     
+     .upload-icon {
+         font-size: 48px;
+         color: var(--primary-color);
+         margin-bottom: 15px;
+     }
+     
+     .file-input-wrapper input[type=file] {
+         display: none;
+     }
+     
+     .file-input-wrapper {
+         display: inline-block;
+     }
+     
+     .dashboard-container {
+         display: none;
+     }
+     
+     .drag-area {
+         border: 2px dashed #cccccc;
+         border-radius: 10px;
+         padding: 40px 20px;
+         text-align: center;
+         margin: 20px 0;
+         transition: border-color 0.3s;
+         cursor: pointer;
+     }
+     
+     .drag-area.active {
+         border-color: var(--primary-color);
+         background-color: rgba(52, 152, 219, 0.05);
+     }
+     
+     .drag-area i {
+         font-size: 50px;
+         color: #ccc;
+     }
+     
+     .stored-data-info {
+         background-color: #e3f2fd;
+         border-radius: 8px;
+         padding: 15px;
+         margin-top: 15px;
+         display: none;
+     }
+ </style>
+</head>
+<body>
+ <!-- Loading Overlay -->
+ <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+     <div class="spinner-border text-primary" role="status">
+         <span class="visually-hidden">Carregando...</span>
+     </div>
+     <p class="mt-3">Processando dados da planilha...</p>
+ </div>
+ 
+ <header class="dashboard-header">
+     <div class="container">
+         <h1 class="text-center">Dashboard de Custos do Carro</h1>
+     </div>
+ </header>
+ 
+ <div class="container">
+     <!-- File Upload Section -->
+     <div class="file-upload-card" id="uploadSection">
+         <div class="upload-icon">
+             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-file-earmark-spreadsheet" viewBox="0 0 16 16">
+                 <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V9H3V2a1 1 0 0 1 1-1h5.5v2z"/>
+                 <path d="M3 12v-2h2v2H3zm0 1h2v2H4a1 1 0 0 1-1-1v-1zm3 2v-2h3v2H6zm4 0v-2h3v1a1 1 0 0 1-1 1h-2zm3-3h-3v-2h3v2zm-7 0v-2h3v2H6z"/>
+             </svg>
+         </div>
+         <h3 class="mb-3">Carregar planilha de despesas</h3>
+         <p class="text-muted mb-4">Selecione ou arraste sua planilha Excel com os dados de despesas do carro</p>
+         
+         <div class="drag-area" id="dragArea">
+             <div class="icon">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-cloud-arrow-up" viewBox="0 0 16 16">
+                     <path fill-rule="evenodd" d="M7.646 5.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 6.707V10.5a.5.5 0 0 1-1 0V6.707L6.354 7.854a.5.5 0 1 1-.708-.708l2-2z"/>
+                     <path d="M4.406 3.342A5.53 5.53 0 0 1 8 2c2.69 0 4.923 2 5.166 4.579C14.758 6.804 16 8.137 16 9.773 16 11.569 14.502 13 12.687 13H3.781C1.708 13 0 11.366 0 9.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383zm.653.757c-.757.653-1.153 1.44-1.153 2.056v.448l-.445.049C2.064 6.805 1 7.952 1 9.318 1 10.785 2.23 12 3.781 12h8.906C13.98 12 15 10.988 15 9.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 4.825 10.328 3 8 3a4.53 4.53 0 0 0-2.941 1.1z"/>
+                 </svg>
+             </div>
+             <header>Arraste e solte o arquivo aqui</header>
+             <span>OU</span>
+             <div class="file-input-wrapper">
+                 <button class="btn btn-primary mt-2" id="browseBtn">Escolher Arquivo</button>
+                 <input type="file" id="fileInput" accept=".xlsx, .xls" hidden>
+             </div>
+         </div>
+         
+         <!-- Dados armazenados -->
+         <div class="stored-data-info" id="storedDataInfo">
+             <div class="d-flex justify-content-between align-items-center">
+                 <div>
+                     <strong>Dados armazenados disponíveis!</strong>
+                     <div><small>Última planilha: <span id="storedFilename">Custo Carro.xlsx</span></small></div>
+                     <div><small>Carregado em: <span id="storedTimestamp">01/01/2023 12:00</span></small></div>
+                 </div>
+                 <button class="btn btn-sm btn-success" id="useStoredDataBtn">Usar Dados Armazenados</button>
+             </div>
+         </div>
+     </div>
+ </div>
+ 
+ <!-- Dashboard Container -->
+ <div class="container mb-5 dashboard-container" id="dashboardContainer">
+     <!-- Informações da Planilha -->
+     <div class="alert alert-info d-flex justify-content-between align-items-center mb-4">
+         <div>
+             <strong>Fonte de dados:</strong> <span id="filename">Planilha de despesas</span>
+             <small class="ms-2 text-muted" id="lastUpdated"></small>
+         </div>
+         <div>
+             <button class="btn btn-sm btn-outline-primary" id="changeFileBtn">
+                 Carregar Outra Planilha
+             </button>
+         </div>
+     </div>
+     
+     <!-- Filtros -->
+     <div class="filter-section mb-4">
+         <div class="row">
+             <div class="col-md-12">
+                 <h5 class="mb-3">Filtros</h5>
+             </div>
+         </div>
+         
+         <div class="row mb-3">
+             <div class="col-md-4">
+                 <label class="form-label">Ano</label>
+                 <div class="year-selector" id="yearSelector">
+                     <button class="year-btn active" data-value="all">Todos</button>
+                     <!-- Anos serão adicionados dinamicamente -->
+                 </div>
+             </div>
+             
+             <div class="col-md-4">
+                 <label for="monthFilter" class="form-label">Mês</label>
+                 <select class="form-select" id="monthFilter">
+                     <option value="all">Todos os Meses</option>
+                     <option value="1">Janeiro</option>
+                     <option value="2">Fevereiro</option>
+                     <option value="3">Março</option>
+                     <option value="4">Abril</option>
+                     <option value="5">Maio</option>
+                     <option value="6">Junho</option>
+                     <option value="7">Julho</option>
+                     <option value="8">Agosto</option>
+                     <option value="9">Setembro</option>
+                     <option value="10">Outubro</option>
+                     <option value="11">Novembro</option>
+                     <option value="12">Dezembro</option>
+                 </select>
+             </div>
+             
+             <div class="col-md-4">
+                 <label class="form-label">Categorias</label>
+                 <div id="categoryFilters" class="d-flex flex-wrap gap-2">
+                     <!-- Categorias serão adicionadas dinamicamente -->
+                 </div>
+             </div>
+         </div>
+     </div>
+     
+     <!-- Cards de Resumo -->
+     <div class="row mb-4">
+         <div class="col-md-4">
+             <div class="card dashboard-card summary-card total">
+                 <div class="card-body">
+                     <div class="summary-label">Total de Despesas</div>
+                     <div class="summary-value" id="totalExpenses">R$ 0,00</div>
+                 </div>
+             </div>
+         </div>
+         <div class="col-md-4">
+             <div class="card dashboard-card summary-card average">
+                 <div class="card-body">
+                     <div class="summary-label">Média Mensal</div>
+                     <div class="summary-value" id="monthlyAverage">R$ 0,00</div>
+                 </div>
+             </div>
+         </div>
+         <div class="col-md-4">
+             <div class="card dashboard-card summary-card category">
+                 <div class="card-body">
+                     <div class="summary-label">Categoria Principal</div>
+                     <div id="topCategory" class="mb-1">-</div>
+                     <div class="summary-value" id="topCategoryValue">R$ 0,00</div>
+                 </div>
+             </div>
+         </div>
+     </div>
+     
+     <!-- Gráficos -->
+     <div class="row">
+         <div class="col-lg-8">
+             <div class="card dashboard-card">
+                 <div class="card-header">Tendência de Gastos</div>
+                 <div class="card-body">
+                     <div class="chart-container">
+                         <canvas id="expenseTrendChart"></canvas>
+                     </div>
+                 </div>
+             </div>
+         </div>
+         <div class="col-lg-4">
+             <div class="card dashboard-card">
+                 <div class="card-header">Gastos por Categoria</div>
+                 <div class="card-body">
+                     <div class="chart-container">
+                         <canvas id="categoryPieChart"></canvas>
+                     </div>
+                 </div>
+             </div>
+         </div>
+         <div class="col-lg-6">
+             <div class="card dashboard-card">
+                 <div class="card-header">Comparativo Mensal</div>
+                 <div class="card-body">
+                     <div class="chart-container">
+                         <canvas id="monthlyComparisonChart"></canvas>
+                     </div>
+                 </div>
+             </div>
+         </div>
+         <div class="col-lg-6">
+             <div class="card dashboard-card">
+                 <div class="card-header">Comparativo Anual por Categoria</div>
+                 <div class="card-body">
+                     <div class="chart-container">
+                         <canvas id="yearlyBreakdownChart"></canvas>
+                     </div>
+                 </div>
+             </div>
+         </div>
+     </div>
+     
+     <!-- Tabela de Despesas -->
+     <div class="row mt-4">
+         <div class="col-12">
+             <div class="card dashboard-card">
+                 <div class="card-header">Detalhes das Despesas</div>
+                 <div class="card-body">
+                     <div class="table-container">
+                         <table class="table table-striped table-hover">
+                             <thead>
+                                 <tr>
+                                     <th>Data</th>
+                                     <th>Categoria</th>
+                                     <th>Descrição</th>
+                                     <th class="text-end">Valor</th>
+                                 </tr>
+                             </thead>
+                             <tbody id="expenseTableBody">
+                                 <!-- Dados serão adicionados dinamicamente -->
+                             </tbody>
+                         </table>
+                     </div>
+                 </div>
+             </div>
+         </div>
+     </div>
+ </div>
+
+ <!-- JavaScript para processar os dados e criar as visualizações -->
+ <script>
+     // Variáveis globais para os gráficos
+     let expenseTrendChart = null;
+     let categoryPieChart = null;
+     let monthlyComparisonChart = null;
+     let yearlyBreakdownChart = null;
+     
+     // Dados globais
+     let completeData = [];
+     
+     // LocalStorage keys
+     const STORAGE_KEY_DATA = 'carDashboardData';
+     const STORAGE_KEY_FILENAME = 'carDashboardFilename';
+     const STORAGE_KEY_TIMESTAMP = 'carDashboardTimestamp';
+     
+     document.addEventListener('DOMContentLoaded', function() {
+         // Configurar o evento de drag and drop
+         setupDragAndDrop();
+         
+         // Verificar se existem dados armazenados
+         checkForStoredData();
+         
+         // Configurar eventos de botões
+         document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+         document.getElementById('browseBtn').addEventListener('click', function() {
+             document.getElementById('fileInput').click();
+         });
+         document.getElementById('useStoredDataBtn').addEventListener('click', loadStoredData);
+         document.getElementById('changeFileBtn').addEventListener('click', showUploadSection);
+     });
+     
+     // Verifica se existem dados armazenados no localStorage
+     function checkForStoredData() {
+         const storedData = localStorage.getItem(STORAGE_KEY_DATA);
+         const storedFilename = localStorage.getItem(STORAGE_KEY_FILENAME);
+         const storedTimestamp = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
+         
+         if (storedData && storedFilename && storedTimestamp) {
+             // Mostra a informação sobre dados armazenados
+             document.getElementById('storedFilename').textContent = storedFilename;
+             document.getElementById('storedTimestamp').textContent = storedTimestamp;
+             document.getElementById('storedDataInfo').style.display = 'block';
+         }
+     }
+     
+     // Carrega dados armazenados do localStorage
+     function loadStoredData() {
+         try {
+             const storedData = localStorage.getItem(STORAGE_KEY_DATA);
+             const storedFilename = localStorage.getItem(STORAGE_KEY_FILENAME);
+             const storedTimestamp = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
+             
+             if (storedData && storedFilename) {
+                 completeData = JSON.parse(storedData);
+                 
+                 // Converte as strings de data de volta para objetos Date
+                 completeData = completeData.map(item => ({
+                     ...item,
+                     date: new Date(item.date)
+                 }));
+                 
+                 document.getElementById('filename').textContent = storedFilename;
+                 document.getElementById('lastUpdated').textContent = `(Carregado: ${storedTimestamp})`;
+                 
+                 // Mostrar dashboard e configurar
+                 document.getElementById('uploadSection').style.display = 'none';
+                 document.getElementById('dashboardContainer').style.display = 'block';
+                 
+                 setupInterface(completeData);
+                 updateDashboard(completeData);
+             }
+         } catch (error) {
+             console.error('Erro ao carregar dados armazenados:', error);
+             alert('Houve um erro ao carregar os dados armazenados. Por favor, carregue a planilha novamente.');
+         }
+     }
+     
+     // Configura o drag and drop
+     function setupDragAndDrop() {
+         const dropArea = document.getElementById('dragArea');
+         
+         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+             dropArea.addEventListener(eventName, preventDefaults, false);
+         });
+         
+         function preventDefaults(e) {
+             e.preventDefault();
+             e.stopPropagation();
+         }
+         
+         ['dragenter', 'dragover'].forEach(eventName => {
+             dropArea.addEventListener(eventName, highlight, false);
+         });
+         
+         ['dragleave', 'drop'].forEach(eventName => {
+             dropArea.addEventListener(eventName, unhighlight, false);
+         });
+         
+         function highlight() {
+             dropArea.classList.add('active');
+         }
+         
+         function unhighlight() {
+             dropArea.classList.remove('active');
+         }
+         
+         dropArea.addEventListener('drop', handleDrop, false);
+         
+         function handleDrop(e) {
+             const dt = e.dataTransfer;
+             const files = dt.files;
+             
+             if (files.length > 0) {
+                 handleFiles(files);
+             }
+         }
+     }
+     
+     // Manipula arquivos (seja via drag & drop ou file input)
+     function handleFiles(files) {
+         if (files.length > 0) {
+             handleFileUpload({ target: { files: files } });
+         }
+     }
+     
+     // Função para processar o upload de arquivo
+     function handleFileUpload(event) {
+         const file = event.target.files[0];
+         if (!file) return;
+         
+         // Verifica se é um arquivo Excel
+         if (!file.name.match(/\.(xlsx|xls)$/i)) {
+             alert('Por favor, selecione um arquivo Excel (.xlsx ou .xls)');
+             return;
+         }
+         
+         // Mostra loading
+         document.getElementById('loadingOverlay').style.display = 'flex';
+         
+         // Processa o arquivo
+         const reader = new FileReader();
+         reader.onload = function(e) {
+             try {
+                 processExcelData(e.target.result, file.name);
+             } catch (error) {
+                 console.error('Erro ao processar o arquivo Excel:', error);
+                 alert(`Erro ao processar o arquivo: ${error.message}`);
+                 document.getElementById('loadingOverlay').style.display = 'none';
+             }
+         };
+         
+         reader.onerror = function() {
+             console.error('Erro ao ler o arquivo Excel');
+             alert('Erro ao ler o arquivo selecionado.');
+             document.getElementById('loadingOverlay').style.display = 'none';
+         };
+         
+         reader.readAsArrayBuffer(file);
+     }
+     
+     // Volta para a tela de upload
+     function showUploadSection() {
+         document.getElementById('dashboardContainer').style.display = 'none';
+         document.getElementById('uploadSection').style.display = 'block';
+     }
+     
+     // Função para processar dados do Excel
+     function processExcelData(data, filename) {
+         const workbook = XLSX.read(data, { type: 'array' });
+         
+         // Verifica se existe a planilha "Dados"
+         const sheetName = workbook.SheetNames.includes('Dados') ? 'Dados' : workbook.SheetNames[0];
+         
+         // Obtém dados da planilha
+         const worksheet = workbook.Sheets[sheetName];
+         const rawData = XLSX.utils.sheet_to_json(worksheet);
+         
+         if (rawData.length === 0) {
+             throw new Error('A planilha está vazia ou não foi possível ler os dados');
+         }
+         
+         // Processa os dados da planilha
+         completeData = processRawData(rawData);
+         
+         // Salva no localStorage
+         const timestamp = new Date().toLocaleString();
+         localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(completeData));
+         localStorage.setItem(STORAGE_KEY_FILENAME, filename);
+         localStorage.setItem(STORAGE_KEY_TIMESTAMP, timestamp);
+         
+         // Atualiza infos na interface
+         document.getElementById('filename').textContent = filename;
+         document.getElementById('lastUpdated').textContent = `(Carregado: ${timestamp})`;
+         
+         // Mostrar dashboard e configurar
+         document.getElementById('uploadSection').style.display = 'none';
+         document.getElementById('dashboardContainer').style.display = 'block';
+         
+         // Configura a interface do usuário
+         setupInterface(completeData);
+         
+         // Inicializa os gráficos e tabelas
+         updateDashboard(completeData);
+         
+         // Esconde o overlay de carregamento
+         document.getElementById('loadingOverlay').style.display = 'none';
+     }
+     
+     // Função para processar os dados brutos da planilha
+     function processRawData(rawData) {
+         // Verifica se os campos esperados existem
+         const requiredFields = ['Data', 'Valor', 'Tipo'];
+         const firstRow = rawData[0];
+         
+         // Verificar e normalizar nomes de campos (diferentes planilhas podem ter nomes ligeiramente diferentes)
+         const fieldMap = {};
+         Object.keys(firstRow).forEach(key => {
+             const lowerKey = key.toLowerCase();
+             if (lowerKey.includes('data')) fieldMap['Data'] = key;
+             if (lowerKey.includes('valor')) fieldMap['Valor'] = key;
+             if (lowerKey.includes('tipo') || lowerKey.includes('categoria')) fieldMap['Tipo'] = key;
+             if (lowerKey.includes('desc')) fieldMap['Descrição'] = key;
+         });
+         
+         // Verificar se temos todos os campos necessários
+         for (const field of requiredFields) {
+             if (!fieldMap[field]) {
+                 throw new Error(`Campo obrigatório não encontrado: ${field}`);
+             }
+         }
+         
+         return rawData.map(item => {
+             // Obter valores dos campos usando o mapeamento
+             const dataValue = item[fieldMap['Data']];
+             const valorValue = item[fieldMap['Valor']];
+             const tipoValue = item[fieldMap['Tipo']];
+             const descValue = fieldMap['Descrição'] ? item[fieldMap['Descrição']] : '';
+             
+             // Verifica se Data é um número (formato Excel) ou string
+             let jsDate;
+             if (typeof dataValue === 'number') {
+                 jsDate = excelDateToJSDate(dataValue);
+             } else if (typeof dataValue === 'string' && dataValue.includes('/')) {
+                 // Formato DD/MM/AAAA
+                 const parts = dataValue.split('/');
+                 jsDate = new Date(parts[2], parts[1] - 1, parts[0]);
+             } else {
+                 // Tenta converter string para data
+                 jsDate = new Date(dataValue);
+             }
+             
+             // Verifica se a data é válida
+             if (isNaN(jsDate.getTime())) {
+                 // Se a data for inválida, tente como número serial do Excel
+                 try {
+                     jsDate = excelDateToJSDate(parseInt(dataValue));
+                 } catch (e) {
+                     // Se todas as tentativas falharem, use a data atual
+                     console.warn(`Data inválida encontrada: ${dataValue}, usando data atual`);
+                     jsDate = new Date();
+                 }
+             }
+             
+             // Normaliza o campo de descrição
+             const descricao = descValue === "n/a" || !descValue ? "-" : descValue;
+             
+             return {
+                 date: jsDate,
+                 valor: Number(valorValue),
+                 descricao: descricao,
+                 tipo: normalizeTipo(tipoValue),
+                 year: jsDate.getFullYear(),
+                 month: jsDate.getMonth() + 1,
+                 formattedDate: jsDate.toLocaleDateString('pt-BR')
+             };
+         });
+     }
+     
+     // Normaliza as categorias para evitar inconsistências
+     function normalizeTipo(tipo) {
+         if (!tipo) return "Não categorizado";
+         
+         // Normaliza "Serviço Imprevisto" vs "Serviço imprevisto"
+         if (typeof tipo === 'string' && tipo.toLowerCase().includes('serviço') && tipo.toLowerCase().includes('imprevisto')) {
+             return "Serviço imprevisto";
+         }
+         
+         return tipo;
+     }
+     
+     // Função para converter o formato de data do Excel para JavaScript Date
+     function excelDateToJSDate(excelDate) {
+         // Excel usa um sistema onde 1 = 1 de janeiro de 1900
+         // 25569 é o número de dias entre 1/1/1900 e 1/1/1970 (a época Unix)
+         return new Date((excelDate - 25569) * 86400 * 1000);
+     }
+     
+     // O restante do código permanece o mesmo
+     
+     // Configura os elementos da interface
+     function setupInterface(data) {
+         // Obtém anos únicos para o filtro de ano
+         const uniqueYears = [...new Set(data.map(item => item.year))].sort();
+         const yearSelector = document.getElementById('yearSelector');
+         
+         // Limpa os botões existentes, exceto o botão "Todos"
+         Array.from(yearSelector.children).forEach(child => {
+             if (child.getAttribute('data-value') !== 'all') {
+                 yearSelector.removeChild(child);
+             }
+         });
+         
+         // Adiciona botões de ano
+         uniqueYears.forEach(year => {
+             const btn = document.createElement('button');
+             btn.className = 'year-btn';
+             btn.setAttribute('data-value', year);
+             btn.textContent = year;
+             btn.addEventListener('click', function() {
+                 document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+                 this.classList.add('active');
+                 filterData();
+             });
+             yearSelector.appendChild(btn);
+         });
+         
+         // Configura filtros de categoria
+         const uniqueCategories = [...new Set(data.map(item => item.tipo))].sort();
+         const categoryFilters = document.getElementById('categoryFilters');
+         
+         // Limpa os filtros existentes
+         categoryFilters.innerHTML = '';
+         
+         uniqueCategories.forEach(category => {
+             const div = document.createElement('div');
+             div.className = 'form-check form-check-inline';
+             
+             const input = document.createElement('input');
+             input.className = 'form-check-input category-checkbox';
+             input.type = 'checkbox';
+             input.id = `category-${category.toString().replace(/[\s()]/g, '-')}`;
+             input.value = category;
+             input.checked = true;
+             input.addEventListener('change', filterData);
+             
+             const label = document.createElement('label');
+             label.className = 'form-check-label';
+             label.htmlFor = input.id;
+             label.textContent = category;
+             
+             div.appendChild(input);
+             div.appendChild(label);
+             categoryFilters.appendChild(div);
+         });
+         
+         // Configura eventos
+         document.getElementById('monthFilter').addEventListener('change', filterData);
+         
+         // Adiciona evento ao botão "Todos"
+         const allYearsBtn = document.querySelector('.year-btn[data-value="all"]');
+         if (allYearsBtn) {
+             allYearsBtn.addEventListener('click', function() {
+                 document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+                 this.classList.add('active');
+                 filterData();
+             });
+         }
+     }
+
+     // Filtra os dados com base nos filtros selecionados
+     function filterData() {
+         const selectedYear = document.querySelector('.year-btn.active').getAttribute('data-value');
+         const selectedMonth = document.getElementById('monthFilter').value;
+         const selectedCategories = Array.from(
+             document.querySelectorAll('.category-checkbox:checked')
+         ).map(cb => cb.value);
+         
+         let filteredData = [...completeData];
+         
+         // Aplica filtro de ano
+         if (selectedYear !== 'all') {
+             filteredData = filteredData.filter(item => item.year === parseInt(selectedYear));
+         }
+         
+         // Aplica filtro de mês
+         if (selectedMonth !== 'all') {
+             filteredData = filteredData.filter(item => item.month === parseInt(selectedMonth));
+         }
+         
+         // Aplica filtro de categorias
+         filteredData = filteredData.filter(item => selectedCategories.includes(item.tipo));
+         
+         // Atualiza o dashboard com os dados filtrados
+         updateDashboard(filteredData);
+     }
+
+     // Cores para os gráficos
+     const chartColors = [
+         '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', 
+         '#1abc9c', '#34495e', '#d35400', '#27ae60', '#8e44ad'
+     ];
+
+     // Atualiza todos os elementos do dashboard com base nos dados filtrados
+     function updateDashboard(data) {
+         if (data.length === 0) {
+             document.getElementById('totalExpenses').textContent = 'R$ 0,00';
+             document.getElementById('monthlyAverage').textContent = 'R$ 0,00';
+             document.getElementById('topCategory').textContent = '-';
+             document.getElementById('topCategoryValue').textContent = 'R$ 0,00';
+             
+             clearCharts();
+             clearTable();
+             return;
+         }
+         
+         // Calcula estatísticas de resumo
+         updateSummaryStatistics(data);
+         
+         // Atualiza gráficos
+         updateExpenseTrendChart(data);
+         updateCategoryPieChart(data);
+         updateMonthlyComparisonChart(data);
+         updateYearlyBreakdownChart(data);
+         
+         // Atualiza tabela de despesas
+         updateExpenseTable(data);
+     }
+
+     // Atualiza cards de resumo
+     function updateSummaryStatistics(data) {
+         // Calcula despesas totais
+         const totalExpense = data.reduce((sum, item) => sum + item.valor, 0);
+         
+         // Agrupa por categoria para encontrar a principal
+         const categoryTotals = data.reduce((acc, item) => {
+             acc[item.tipo] = (acc[item.tipo] || 0) + item.valor;
+             return acc;
+         }, {});
+         
+         const topCategory = Object.entries(categoryTotals)
+             .sort((a, b) => b[1] - a[1])
+             .shift() || ['Nenhum', 0];
+         
+         // Calcula média mensal
+         // Agrupa por mês-ano para obter meses únicos
+         const monthlyData = {};
+         data.forEach(item => {
+             const key = `${item.year}-${item.month}`;
+             if (!monthlyData[key]) {
+                 monthlyData[key] = 0;
+             }
+             monthlyData[key] += item.valor;
+         });
+         
+         const uniqueMonths = Object.keys(monthlyData).length;
+         let monthlyAverage = 0;
+         
+         if (uniqueMonths > 0) {
+             monthlyAverage = totalExpense / uniqueMonths;
+         }
+         
+         // Atualiza cards de resumo
+         document.getElementById('totalExpenses').textContent = formatCurrency(totalExpense);
+         document.getElementById('monthlyAverage').textContent = formatCurrency(monthlyAverage);
+         document.getElementById('topCategory').textContent = topCategory[0];
+         document.getElementById('topCategoryValue').textContent = formatCurrency(topCategory[1]);
+     }
+
+     // Formatador de moeda
+     function formatCurrency(value) {
+         return new Intl.NumberFormat('pt-BR', {
+             style: 'currency',
+             currency: 'BRL'
+         }).format(value);
+     }
+     
+     // Funções para atualização dos gráficos
+     function updateExpenseTrendChart(data) {
+         // Agrupa dados por mês-ano para análise de tendência
+         const monthlySums = {};
+         
+         data.forEach(item => {
+             const yearMonth = `${item.year}-${String(item.month).padStart(2, '0')}`;
+             monthlySums[yearMonth] = (monthlySums[yearMonth] || 0) + item.valor;
+         });
+         
+         const sortedLabels = Object.keys(monthlySums).sort();
+         
+         // Formata labels para mostrar como "MMM/YYYY"
+         const formattedLabels = sortedLabels.map(ym => {
+             const [year, month] = ym.split('-');
+             const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+             return date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace(' de ', '/');
+         });
+         
+         const values = sortedLabels.map(key => monthlySums[key]);
+         
+         // Cria ou atualiza o gráfico
+         if (expenseTrendChart) {
+             expenseTrendChart.data.labels = formattedLabels;
+             expenseTrendChart.data.datasets[0].data = values;
+             expenseTrendChart.update();
+         } else {
+             const ctx = document.getElementById('expenseTrendChart').getContext('2d');
+             expenseTrendChart = new Chart(ctx, {
+                 type: 'line',
+                 data: {
+                     labels: formattedLabels,
+                     datasets: [{
+                         label: 'Gastos Mensais',
+                         data: values,
+                         borderColor: chartColors[0],
+                         backgroundColor: `${chartColors[0]}33`,
+                         borderWidth: 2,
+                         tension: 0.3,
+                         fill: true,
+                         pointBackgroundColor: chartColors[0],
+                         pointRadius: 4
+                     }]
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     plugins: {
+                         legend: {
+                             display: false
+                         },
+                         tooltip: {
+                             callbacks: {
+                                 label: function(context) {
+                                     return formatCurrency(context.raw);
+                                 }
+                             }
+                         }
+                     },
+                     scales: {
+                         y: {
+                             beginAtZero: true,
+                             ticks: {
+                                 callback: function(value) {
+                                     return formatCurrency(value);
+                                 }
+                             }
+                         }
+                     }
+                 }
+             });
+         }
+     }
+
+     function updateCategoryPieChart(data) {
+         // Agrupa por categoria
+         const categoryTotals = data.reduce((acc, item) => {
+             acc[item.tipo] = (acc[item.tipo] || 0) + item.valor;
+             return acc;
+         }, {});
+         
+         const labels = Object.keys(categoryTotals);
+         const values = Object.values(categoryTotals);
+         
+         // Cria ou atualiza gráfico
+         if (categoryPieChart) {
+             categoryPieChart.data.labels = labels;
+             categoryPieChart.data.datasets[0].data = values;
+             categoryPieChart.update();
+         } else {
+             const ctx = document.getElementById('categoryPieChart').getContext('2d');
+             categoryPieChart = new Chart(ctx, {
+                 type: 'doughnut',
+                 data: {
+                     labels: labels,
+                     datasets: [{
+                         data: values,
+                         backgroundColor: chartColors.slice(0, labels.length)
+                     }]
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     plugins: {
+                         legend: {
+                             position: 'right',
+                             labels: {
+                                 boxWidth: 15,
+                                 padding: 15
+                             }
+                         },
+                         tooltip: {
+                             callbacks: {
+                                 label: function(context) {
+                                     const label = context.label || '';
+                                     const value = formatCurrency(context.raw);
+                                     const percentage = ((context.raw / values.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
+                                     return `${label}: ${value} (${percentage}%)`;
+                                 }
+                             }
+                         }
+                     },
+                     cutout: '60%'
+                 }
+             });
+         }
+     }
+
+     function updateMonthlyComparisonChart(data) {
+         // Obtém ano selecionado ou todos os anos
+         const selectedYearBtn = document.querySelector('.year-btn.active');
+         const selectedYear = selectedYearBtn ? selectedYearBtn.getAttribute('data-value') : 'all';
+         
+         // Configuração dados mensais
+         const monthlyTotals = Array(12).fill(0);
+         const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+         
+         // Filtra para o ano selecionado se especificado
+         let filteredData = data;
+         if (selectedYear !== 'all') {
+             filteredData = data.filter(item => item.year === parseInt(selectedYear));
+         }
+         
+         // Calcula totais por mês
+         filteredData.forEach(item => {
+             monthlyTotals[item.month - 1] += item.valor;
+         });
+         
+         // Cria ou atualiza gráfico
+         if (monthlyComparisonChart) {
+             monthlyComparisonChart.data.datasets[0].data = monthlyTotals;
+             monthlyComparisonChart.options.plugins.title.text = selectedYear !== 'all' 
+                 ? `Gastos Mensais de ${selectedYear}` 
+                 : 'Gastos Mensais (Todos os Anos)';
+             monthlyComparisonChart.update();
+         } else {
+             const ctx = document.getElementById('monthlyComparisonChart').getContext('2d');
+             monthlyComparisonChart = new Chart(ctx, {
+                 type: 'bar',
+                 data: {
+                     labels: monthNames,
+                     datasets: [{
+                         label: 'Gastos Mensais',
+                         data: monthlyTotals,
+                         backgroundColor: chartColors[2],
+                         borderRadius: 4
+                     }]
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     plugins: {
+                         legend: {
+                             display: false
+                         },
+                         title: {
+                             display: true,
+                             text: selectedYear !== 'all' ? `Gastos Mensais de ${selectedYear}` : 'Gastos Mensais (Todos os Anos)',
+                             font: {
+                                 size: 14
+                             }
+                         },
+                         tooltip: {
+                             callbacks: {
+                                 label: function(context) {
+                                     return formatCurrency(context.raw);
+                                 }
+                             }
+                         }
+                     },
+                     scales: {
+                         y: {
+                             beginAtZero: true,
+                             ticks: {
+                                 callback: function(value) {
+                                     return formatCurrency(value);
+                                 }
+                             }
+                         }
+                     }
+                 }
+             });
+         }
+     }
+
+     function updateYearlyBreakdownChart(data) {
+         // Agrupa por ano e categoria
+         const yearCategoryData = {};
+         const categories = [...new Set(data.map(item => item.tipo))];
+         
+         // Obtém todos os anos únicos dos dados completos
+         const years = [...new Set(completeData.map(item => item.year))].sort();
+         
+         // Inicializa a estrutura de dados para todos os anos e categorias
+         years.forEach(year => {
+             if (!yearCategoryData[year]) {
+                 yearCategoryData[year] = {};
+                 categories.forEach(cat => yearCategoryData[year][cat] = 0);
+             }
+         });
+         
+         // Preenche com os dados filtrados
+         data.forEach(item => {
+             yearCategoryData[item.year][item.tipo] += item.valor;
+         });
+         
+         // Cria datasets para cada categoria
+         const datasets = categories.map((category, idx) => {
+             return {
+                 label: category,
+                 data: years.map(year => yearCategoryData[year][category] || 0),
+                 backgroundColor: chartColors[idx % chartColors.length],
+                 borderRadius: 4
+             };
+         });
+         
+         // Cria ou atualiza gráfico
+         if (yearlyBreakdownChart) {
+             yearlyBreakdownChart.data.labels = years;
+             yearlyBreakdownChart.data.datasets = datasets;
+             yearlyBreakdownChart.update();
+         } else {
+             const ctx = document.getElementById('yearlyBreakdownChart').getContext('2d');
+             yearlyBreakdownChart = new Chart(ctx, {
+                 type: 'bar',
+                 data: {
+                     labels: years,
+                     datasets: datasets
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     plugins: {
+                         tooltip: {
+                             callbacks: {
+                                 label: function(context) {
+                                     const label = context.dataset.label || '';
+                                     const value = formatCurrency(context.raw);
+                                     return `${label}: ${value}`;
+                                 }
+                             }
+                         }
+                     },
+                     scales: {
+                         x: {
+                             stacked: true
+                         },
+                         y: {
+                             stacked: true,
+                             beginAtZero: true,
+                             ticks: {
+                                 callback: function(value) {
+                                     return formatCurrency(value);
+                                 }
+                             }
+                         }
+                     }
+                 }
+             });
+         }
+     }
+
+     function updateExpenseTable(data) {
+         const tableBody = document.getElementById('expenseTableBody');
+         tableBody.innerHTML = '';
+         
+         // Ordena por data (mais recente primeiro)
+         const sortedData = [...data].sort((a, b) => b.date - a.date);
+         
+         // Adiciona linhas à tabela
+         sortedData.forEach(item => {
+             const row = document.createElement('tr');
+             
+             // Coluna de data
+             const dateCell = document.createElement('td');
+             dateCell.textContent = item.formattedDate;
+             
+             // Coluna de tipo
+             const typeCell = document.createElement('td');
+             typeCell.textContent = item.tipo;
+             
+             // Coluna de descrição
+             const descCell = document.createElement('td');
+             descCell.textContent = item.descricao;
+             
+             // Coluna de valor
+             const valueCell = document.createElement('td');
+             valueCell.className = 'text-end';
+             valueCell.textContent = formatCurrency(item.valor);
+             
+             row.appendChild(dateCell);
+             row.appendChild(typeCell);
+             row.appendChild(descCell);
+             row.appendChild(valueCell);
+             
+             tableBody.appendChild(row);
+         });
+     }
+
+     function clearCharts() {
+         if (expenseTrendChart) {
+             expenseTrendChart.data.labels = [];
+             expenseTrendChart.data.datasets[0].data = [];
+             expenseTrendChart.update();
+         }
+         
+         if (categoryPieChart) {
+             categoryPieChart.data.labels = [];
+             categoryPieChart.data.datasets[0].data = [];
+             categoryPieChart.update();
+         }
+         
+         if (monthlyComparisonChart) {
+             monthlyComparisonChart.data.datasets[0].data = Array(12).fill(0);
+             monthlyComparisonChart.update();
+         }
+         
+         if (yearlyBreakdownChart) {
+             yearlyBreakdownChart.data.labels = [];
+             yearlyBreakdownChart.data.datasets = [];
+             yearlyBreakdownChart.update();
+         }
+     }
+
+     function clearTable() {
+         document.getElementById('expenseTableBody').innerHTML = '';
+     }
+ </script>
+</body>
+</html>
